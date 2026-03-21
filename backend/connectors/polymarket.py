@@ -19,9 +19,17 @@ import httpx
 from typing import Optional
 from loguru import logger
 
-from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType as PMOrderType
-from py_clob_client.order_builder.constants import BUY, SELL
+try:
+    from py_clob_client.client import ClobClient
+    from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType as PMOrderType
+    from py_clob_client.order_builder.constants import BUY, SELL
+    HAS_CLOB_CLIENT = True
+except ImportError:
+    ClobClient = None
+    HAS_CLOB_CLIENT = False
+    BUY = "BUY"
+    SELL = "SELL"
+    logger.warning("py_clob_client not installed — trading features disabled")
 
 from backend.connectors.base import (
     BaseConnector,
@@ -109,7 +117,7 @@ class PolymarketConnector(BaseConnector):
             logger.info("Connected to Polymarket Gamma API (market data)")
 
             # Set up CLOB client if credentials are available
-            if polymarket_config.has_credentials:
+            if polymarket_config.has_credentials and HAS_CLOB_CLIENT:
                 self._clob_client = ClobClient(
                     host=polymarket_config.clob_url,
                     chain_id=polymarket_config.chain_id,

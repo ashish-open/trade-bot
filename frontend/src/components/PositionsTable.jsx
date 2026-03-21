@@ -1,6 +1,15 @@
-import { ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, X } from 'lucide-react'
+import { useState } from 'react'
 
-export default function PositionsTable({ positions }) {
+export default function PositionsTable({ positions, onClose }) {
+  const [closing, setClosing] = useState(null)
+
+  const handleClose = async (pos) => {
+    setClosing(pos.id)
+    await onClose(pos)
+    setClosing(null)
+  }
+
   return (
     <div className="glass p-5">
       <div className="flex items-center justify-between mb-4">
@@ -17,7 +26,8 @@ export default function PositionsTable({ positions }) {
               <th className="text-right pb-3 pr-4">Size</th>
               <th className="text-right pb-3 pr-4">Entry</th>
               <th className="text-right pb-3 pr-4">Current</th>
-              <th className="text-right pb-3">P&L</th>
+              <th className="text-right pb-3 pr-4">P&L</th>
+              <th className="text-center pb-3">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -58,7 +68,7 @@ export default function PositionsTable({ positions }) {
                   <td className="py-3 pr-4 text-right tabular-nums text-gray-300">
                     ${pos.currentPrice.toFixed(pos.currentPrice > 10 ? 2 : 4)}
                   </td>
-                  <td className="py-3 text-right">
+                  <td className="py-3 pr-4 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {isProfit ? (
                         <ArrowUpRight size={14} className="text-accent-green" />
@@ -76,6 +86,15 @@ export default function PositionsTable({ positions }) {
                         ({isProfit ? '+' : ''}{pos.pnlPercent.toFixed(1)}%)
                       </span>
                     </div>
+                  </td>
+                  <td className="py-3 text-center">
+                    <button
+                      onClick={() => handleClose(pos)}
+                      disabled={closing === pos.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent-red/10 text-accent-red hover:bg-accent-red/20 border border-accent-red/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {closing === pos.id ? 'Closing...' : 'Close'}
+                    </button>
                   </td>
                 </tr>
               )

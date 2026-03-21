@@ -11,6 +11,11 @@ export default function TradeHistory({ trades }) {
       </div>
 
       <div className="space-y-1">
+        {trades.length === 0 && (
+          <div className="text-center text-gray-600 text-sm py-6">
+            No trades yet — place your first order!
+          </div>
+        )}
         {trades.map((trade) => (
           <div
             key={trade.id}

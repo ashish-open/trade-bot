@@ -26,6 +26,8 @@ data/*.csv
 .DS_Store
 Thumbs.db
 
+# Node
+node_modules/
+
 # Dashboard
-dashboard/node_modules/
 dashboard/dist/

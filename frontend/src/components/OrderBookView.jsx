@@ -1,14 +1,24 @@
-export default function OrderBookView({ orderBook }) {
+export default function OrderBookView({ orderBook, marketName }) {
+  if (!orderBook.bids.length && !orderBook.asks.length) {
+    return (
+      <div className="glass p-5">
+        <h3 className="text-sm font-medium text-gray-400 mb-4">Order Book</h3>
+        <div className="text-center text-gray-600 text-sm py-8">No order book data</div>
+      </div>
+    )
+  }
+
   const maxSize = Math.max(
     ...orderBook.bids.map((b) => b.size),
-    ...orderBook.asks.map((a) => a.size)
+    ...orderBook.asks.map((a) => a.size),
+    1
   )
 
   return (
     <div className="glass p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-gray-400">Order Book</h3>
-        <span className="text-xs text-gray-600">BTC $150k by July</span>
+        <span className="text-xs text-gray-600 truncate ml-2">{marketName}</span>
       </div>
 
       {/* Header */}
@@ -73,10 +83,12 @@ export default function OrderBookView({ orderBook }) {
       </div>
 
       {/* Spread info */}
-      <div className="mt-3 pt-3 border-t border-white/5 flex justify-between text-xs text-gray-500">
-        <span>Spread: ${(orderBook.asks[0].price - orderBook.bids[0].price).toFixed(2)}</span>
-        <span>Mid: ${((orderBook.asks[0].price + orderBook.bids[0].price) / 2).toFixed(3)}</span>
-      </div>
+      {orderBook.bids[0] && orderBook.asks[0] && (
+        <div className="mt-3 pt-3 border-t border-white/5 flex justify-between text-xs text-gray-500">
+          <span>Spread: ${(orderBook.asks[0].price - orderBook.bids[0].price).toFixed(2)}</span>
+          <span>Mid: ${((orderBook.asks[0].price + orderBook.bids[0].price) / 2).toFixed(3)}</span>
+        </div>
+      )}
     </div>
   )
 }
