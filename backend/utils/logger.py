@@ -5,7 +5,7 @@ Provides structured, readable logs for the trading bot.
 
 import sys
 from loguru import logger
-from src.utils.config import bot_config
+from backend.utils.config import bot_config
 
 
 def setup_logger():

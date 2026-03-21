@@ -23,7 +23,7 @@ from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType as PMOrderType
 from py_clob_client.order_builder.constants import BUY, SELL
 
-from src.connectors.base import (
+from backend.connectors.base import (
     BaseConnector,
     Market,
     OrderBook,
@@ -33,7 +33,7 @@ from src.connectors.base import (
     OrderType,
     OrderStatus,
 )
-from src.utils.config import polymarket_config
+from backend.utils.config import polymarket_config
 
 
 # ─── Mapping helpers ────────────────────────────────────────────────

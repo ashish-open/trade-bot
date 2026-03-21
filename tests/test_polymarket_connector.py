@@ -11,11 +11,11 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.connectors.base import (
+from backend.connectors.base import (
     Market, OrderBook, Order, Position,
     OrderSide, OrderType, OrderStatus,
 )
-from src.connectors.polymarket import PolymarketConnector, _map_side_to_pm, _map_pm_status
+from backend.connectors.polymarket import PolymarketConnector, _map_side_to_pm, _map_pm_status
 
 
 class TestDataModels:

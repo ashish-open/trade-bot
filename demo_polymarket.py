@@ -22,8 +22,8 @@ import os
 # Add project root to path so imports work
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.connectors.polymarket import PolymarketConnector
-from src.connectors.base import OrderSide, OrderType
+from backend.connectors.polymarket import PolymarketConnector
+from backend.connectors.base import OrderSide, OrderType
 
 
 async def demo_market_data():

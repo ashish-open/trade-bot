@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Glassmorphism card base */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+}
+
+.glass-subtle {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 20px rgba(0, 230, 118, 0.1), inset 0 0 20px rgba(0, 230, 118, 0.03);
+}
+.glow-red {
+  box-shadow: 0 0 20px rgba(255, 82, 82, 0.1), inset 0 0 20px rgba(255, 82, 82, 0.03);
+}
+.glow-blue {
+  box-shadow: 0 0 20px rgba(68, 138, 255, 0.1), inset 0 0 20px rgba(68, 138, 255, 0.03);
+}
+.glow-purple {
+  box-shadow: 0 0 20px rgba(124, 77, 255, 0.1), inset 0 0 20px rgba(124, 77, 255, 0.03);
+}
+
+/* Pulse animation for live indicator */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Number transition */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #448aff, #7c4dff, #18ffff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

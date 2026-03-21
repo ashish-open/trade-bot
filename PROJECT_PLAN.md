@@ -106,38 +106,67 @@ A fully autonomous, multi-platform trading bot that executes strategies across c
 4. **Modular design** — every strategy is a plugin, every exchange is a connector
 5. **Log everything** — every decision, every trade, every signal
 
-## Folder Structure (Planned)
+## Folder Structure
 ```
 trade-bot/
-├── src/
-│   ├── connectors/         # Exchange/platform connectors
-│   │   ├── binance.py
-│   │   ├── polymarket.py
-│   │   ├── hyperliquid.py
-│   │   └── base.py         # Abstract connector interface
-│   ├── strategies/          # Trading strategies (pluggable)
-│   │   ├── sma_crossover.py
-│   │   ├── rsi_reversion.py
-│   │   └── base.py         # Abstract strategy interface
-│   ├── engine/              # Core trading engine
-│   │   ├── backtester.py
-│   │   ├── paper_trader.py
-│   │   ├── live_trader.py
-│   │   ├── order_manager.py
-│   │   └── risk_manager.py
-│   ├── data/                # Data fetching & storage
-│   │   ├── fetcher.py
-│   │   ├── storage.py
-│   │   └── models.py
-│   ├── api/                 # FastAPI dashboard backend
-│   │   └── main.py
-│   └── utils/               # Helpers, logging, config
-│       ├── config.py
-│       └── logger.py
-├── dashboard/               # React frontend
-├── tests/                   # Test suite
-├── data/                    # Local data storage (SQLite, CSVs)
-├── config.yaml              # Bot configuration
-├── requirements.txt
-└── README.md
+├── backend/                     # Python — all server-side code
+│   ├── api/                     # FastAPI application
+│   │   ├── main.py              # App entry point, router registration
+│   │   ├── dependencies.py      # Shared state (connector instances)
+│   │   └── routes/              # One file per resource
+│   │       ├── health.py        # GET /api/health
+│   │       ├── portfolio.py     # GET /api/portfolio, /api/positions
+│   │       ├── markets.py       # GET /api/markets, /api/orderbook
+│   │       ├── orders.py        # POST/GET/DELETE /api/orders
+│   │       ├── trades.py        # GET /api/trades
+│   │       └── ws.py            # WS /ws/updates (real-time)
+│   ├── connectors/              # Exchange/platform connectors
+│   │   ├── base.py              # Abstract connector + shared models
+│   │   ├── polymarket.py        # Polymarket (CLOB + Gamma + Data)
+│   │   ├── binance.py           # (planned) Binance via ccxt
+│   │   └── hyperliquid.py       # (planned) Hyperliquid perps
+│   ├── strategies/              # Trading strategies (pluggable)
+│   │   ├── base.py              # Abstract strategy interface
+│   │   ├── sma_crossover.py     # (planned)
+│   │   └── rsi_reversion.py     # (planned)
+│   ├── engine/                  # Core trading engine
+│   │   ├── backtester.py        # (planned)
+│   │   ├── paper_trader.py      # (planned)
+│   │   ├── risk_manager.py      # (planned)
+│   │   └── order_manager.py     # (planned)
+│   ├── data/                    # Data fetching & storage
+│   │   ├── fetcher.py           # (planned)
+│   │   └── models.py            # (planned)
+│   └── utils/                   # Helpers
+│       ├── config.py            # Pydantic settings from .env
+│       └── logger.py            # Loguru setup
+│
+├── frontend/                    # React + Vite — dashboard UI
+│   ├── src/
+│   │   ├── App.jsx              # Main layout (sidebar, header, grid)
+│   │   ├── main.jsx             # React entry point
+│   │   ├── index.css            # Tailwind + glassmorphism styles
+│   │   ├── mockData.js          # Mock data (replaced by API calls)
+│   │   └── components/
+│   │       ├── PortfolioOverview.jsx
+│   │       ├── EquityChart.jsx
+│   │       ├── PositionsTable.jsx
+│   │       ├── OrderBookView.jsx
+│   │       ├── TradeHistory.jsx
+│   │       ├── StrategyPanel.jsx
+│   │       └── LiveMarkets.jsx
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js           # Proxy /api → backend:8000
+│   ├── tailwind.config.js
+│   └── postcss.config.js
+│
+├── tests/                       # Test suite
+│   └── test_polymarket_connector.py
+├── data/                        # Local storage (SQLite, logs)
+├── .env.example                 # Template for credentials
+├── .gitignore
+├── requirements.txt             # Python dependencies
+├── demo_polymarket.py           # Quick-start demo script
+└── PROJECT_PLAN.md
 ```
