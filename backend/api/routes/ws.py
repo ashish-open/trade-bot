@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
-from backend.api.dependencies import get_simulator, get_paper_engine
+from backend.api.dependencies import get_simulator, get_paper_engine, get_polymarket_feed
 
 router = APIRouter()
 ws_connections: set[WebSocket] = set()
@@ -13,11 +13,10 @@ ws_connections: set[WebSocket] = set()
 @router.websocket("/ws/updates")
 async def websocket_updates(websocket: WebSocket):
     """
-    Push real-time updates to the dashboard every second:
-    - Market prices (all markets, with platform info)
-    - Portfolio value
-    - Position P&L
-    - Open order fill checks
+    Push real-time updates every second:
+    - Market prices (real Polymarket + simulated others)
+    - Portfolio value and positions
+    - Limit order fill checks
     """
     await websocket.accept()
     ws_connections.add(websocket)
@@ -27,21 +26,40 @@ async def websocket_updates(websocket: WebSocket):
         while True:
             sim = get_simulator()
             engine = get_paper_engine()
+            feed = get_polymarket_feed()
 
             update = {"type": "tick", "timestamp": datetime.utcnow().isoformat()}
 
+            market_updates = []
+
+            # Real Polymarket data (if feed is live)
+            if feed and feed.is_running():
+                for m in feed.get_markets():
+                    market_updates.append({
+                        "id": m["id"],
+                        "price": m["price"],
+                        "change": m.get("change", 0),
+                        "platform": "polymarket",
+                        "dataSource": "live",
+                    })
+
+            # Simulated markets (Binance + Hyperliquid + fallback Polymarket)
             if sim:
-                update["markets"] = [
-                    {
+                live_poly_ids = {m["id"] for m in market_updates}
+                for m_id, m in sim.markets.items():
+                    # Skip simulated Polymarket if live feed covers it
+                    if m.platform == "polymarket" and live_poly_ids:
+                        continue
+                    decimals = 4 if m.market_type == "prediction" else 2
+                    market_updates.append({
                         "id": m_id,
-                        "price": round(m.true_price, 4 if m.market_type == "prediction" else 2),
+                        "price": round(m.true_price, decimals),
                         "change": m.get_price_change(),
-                        "bid": m.get_bid_price(),
-                        "ask": m.get_ask_price(),
                         "platform": m.platform,
-                    }
-                    for m_id, m in sim.markets.items()
-                ]
+                        "dataSource": "simulated",
+                    })
+
+            update["markets"] = market_updates
 
             if engine:
                 engine.check_fills()

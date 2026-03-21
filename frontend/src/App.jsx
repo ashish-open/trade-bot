@@ -87,10 +87,17 @@ function Header({ cash, activePlatform, platforms, onPlatformChange }) {
           <h1 className="text-lg font-semibold text-gray-200">Dashboard</h1>
           <p className="text-xs text-gray-500">
             Paper Trading Mode
-            <span className="ml-2 inline-flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-yellow animate-pulse-glow" />
-              Simulated
-            </span>
+            {platforms.some((p) => p.dataSource === 'live') ? (
+              <span className="ml-2 inline-flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse-glow" />
+                Live Data
+              </span>
+            ) : (
+              <span className="ml-2 inline-flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-yellow animate-pulse-glow" />
+                Simulated
+              </span>
+            )}
           </p>
         </div>
 
@@ -122,6 +129,9 @@ function Header({ cash, activePlatform, platforms, onPlatformChange }) {
                 <Icon size={12} />
                 {p.label}
                 <span className="text-gray-600 tabular-nums">{p.marketCount}</span>
+                {p.dataSource === 'live' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse-glow" title="Live data" />
+                )}
               </button>
             )
           })}

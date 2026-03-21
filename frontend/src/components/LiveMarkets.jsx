@@ -61,7 +61,12 @@ export default function LiveMarkets({ markets, selectedId, onSelect }) {
               )}
 
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-gray-200 truncate">{market.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm text-gray-200 truncate">{market.name}</span>
+                  {market.dataSource === 'live' && (
+                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-accent-green" title="Live data" />
+                  )}
+                </div>
                 <div className="text-xs text-gray-500">
                   Vol: {market.volume}
                 </div>

@@ -71,6 +71,16 @@ export default function TradePanel({ market, onPlaceOrder, cash, positions }) {
             {market.symbol && (
               <span className="text-xs text-gray-500">• {market.symbol}</span>
             )}
+            {market.dataSource === 'live' ? (
+              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-accent-green/10 text-accent-green border border-accent-green/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse-glow" />
+                LIVE
+              </span>
+            ) : (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-accent-yellow/10 text-accent-yellow border border-accent-yellow/20">
+                SIM
+              </span>
+            )}
           </div>
           <h3 className="text-sm font-medium text-gray-200">{market.name}</h3>
           <div className="flex items-center gap-3 mt-1">
