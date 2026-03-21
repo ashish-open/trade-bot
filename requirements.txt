@@ -1,0 +1,30 @@
+# Core dependencies
+py-clob-client>=0.34.0        # Polymarket CLOB API client
+ccxt>=4.0.0                    # Crypto exchange connectivity (Binance, etc.)
+web3>=6.0.0                    # Ethereum/Polygon interaction (DEXs)
+python-dotenv>=1.0.0           # Environment variable management
+pydantic>=2.0.0                # Data validation and settings
+pydantic-settings>=2.0.0       # Settings management with .env support
+
+# Data & Analysis
+pandas>=2.0.0                  # Data manipulation
+numpy>=1.24.0                  # Numerical computing
+
+# HTTP & WebSocket
+httpx>=0.25.0                  # Async HTTP client
+websockets>=12.0               # WebSocket client
+
+# Database
+sqlalchemy>=2.0.0              # ORM / database toolkit
+aiosqlite>=0.19.0              # Async SQLite support
+
+# API (Dashboard backend - Phase 6)
+# fastapi>=0.100.0
+# uvicorn>=0.23.0
+
+# Logging
+loguru>=0.7.0                  # Better logging
+
+# Testing
+pytest>=7.0.0                  # Test framework
+pytest-asyncio>=0.21.0         # Async test support
