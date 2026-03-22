@@ -11,6 +11,8 @@ import {
   Coins,
   Zap,
   Globe,
+  Terminal,
+  X,
 } from 'lucide-react'
 
 import PortfolioOverview from './components/PortfolioOverview'
@@ -22,6 +24,7 @@ import TradePanel from './components/TradePanel'
 import OpenOrders from './components/OpenOrders'
 import MarketsPage from './components/MarketsPage'
 import SettingsPage from './components/SettingsPage'
+import TerminalPanel from './components/TerminalPanel'
 import useWebSocket from './useWebSocket'
 import * as api from './api'
 
@@ -33,7 +36,7 @@ const NAV_ITEMS = [
   { icon: Settings, label: 'Settings', id: 'settings' },
 ]
 
-function Sidebar({ active, onNav, connected }) {
+function Sidebar({ active, onNav, connected, onOpenTerminal }) {
   return (
     <aside className="w-16 lg:w-56 h-screen fixed left-0 top-0 flex flex-col border-r border-white/[0.04] bg-dark-800/50 backdrop-blur-xl z-50">
       <div className="h-16 flex items-center justify-center lg:justify-start lg:px-5 border-b border-white/[0.04]">
@@ -59,6 +62,15 @@ function Sidebar({ active, onNav, connected }) {
             <span className="hidden lg:block text-sm">{item.label}</span>
           </button>
         ))}
+
+        {/* Terminal button */}
+        <button
+          onClick={onOpenTerminal}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-accent-cyan hover:bg-accent-cyan/[0.06] border border-accent-cyan/20 mt-4"
+        >
+          <Terminal size={18} />
+          <span className="hidden lg:block text-sm font-medium">Terminal</span>
+        </button>
       </nav>
       <div className="p-3 lg:px-4 border-t border-white/[0.04]">
         <div className="flex items-center gap-2 text-xs">
@@ -166,11 +178,13 @@ export default function App() {
   })
   const [positions, setPositions] = useState([])
   const [markets, setMarkets] = useState([])
+  const [allMarkets, setAllMarkets] = useState([])
   const [trades, setTrades] = useState([])
   const [openOrders, setOpenOrders] = useState([])
   const [selectedMarket, setSelectedMarket] = useState(null)
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] })
   const [notification, setNotification] = useState(null)
+  const [terminalOpen, setTerminalOpen] = useState(false)
 
   const { data: wsData, connected } = useWebSocket()
 
@@ -184,12 +198,12 @@ export default function App() {
       setPositions(wsData.positions)
     }
     if (wsData.markets) {
-      setMarkets((prev) => {
+      setAllMarkets((prev) => {
         const priceMap = {}
         wsData.markets.forEach((m) => { priceMap[m.id] = m })
         return prev.map((m) => {
           const update = priceMap[m.id]
-          return update ? { ...m, price: update.price, change: update.change } : m
+          return update ? { ...m, price: update.price, change: update.change, dataSource: update.dataSource || m.dataSource } : m
         })
       })
     }
@@ -201,13 +215,13 @@ export default function App() {
       try {
         const [plats, mkts, port, trds, ords] = await Promise.all([
           api.getPlatforms(),
-          api.getMarkets(activePlatform),
+          api.getMarkets('', '', 100),
           api.getPortfolio(),
           api.getTradeHistory(),
           api.getOpenOrders(),
         ])
         setPlatforms(plats)
-        setMarkets(mkts)
+        setAllMarkets(mkts)
         setPortfolio(port)
         setTrades(trds)
         setOpenOrders(ords)
@@ -219,14 +233,14 @@ export default function App() {
     load()
   }, [])
 
-  // ── Reload markets when platform changes ────────────────────
+  // ── Filter markets when platform changes ──────────────────
   useEffect(() => {
-    api.getMarkets(activePlatform).then((mkts) => {
-      setMarkets(mkts)
-      // Auto-select first market of new platform
-      if (mkts.length > 0) setSelectedMarket(mkts[0])
-    }).catch(console.error)
-  }, [activePlatform])
+    if (activePlatform) {
+      setMarkets(allMarkets.filter((m) => m.platform === activePlatform))
+    } else {
+      setMarkets(allMarkets)
+    }
+  }, [activePlatform, allMarkets])
 
   // ── Order book polling ──────────────────────────────────────
   useEffect(() => {
@@ -342,7 +356,12 @@ export default function App() {
         </div>
       )}
 
-      <Sidebar active={activePage} onNav={setActivePage} connected={connected} />
+      <Sidebar
+        active={activePage}
+        onNav={setActivePage}
+        connected={connected}
+        onOpenTerminal={() => setTerminalOpen(true)}
+      />
 
       <main className="ml-16 lg:ml-56 relative z-10">
         <Header
@@ -414,6 +433,22 @@ export default function App() {
           <SettingsPage />
         )}
       </main>
+
+      {/* Bloomberg-style Terminal Panel (slide-out) */}
+      <TerminalPanel
+        open={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        markets={filteredMarkets}
+        allMarkets={allMarkets}
+        selectedMarket={selectedMarket}
+        onSelectMarket={handleSelectMarket}
+        orderBook={orderBook}
+        portfolio={portfolio}
+        positions={positions}
+        trades={trades}
+        onPlaceOrder={handlePlaceOrder}
+        onClosePosition={handleClosePosition}
+      />
     </div>
   )
 }

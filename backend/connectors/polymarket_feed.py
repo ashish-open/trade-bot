@@ -9,6 +9,7 @@ No authentication required for read-only market data.
 """
 
 import asyncio
+import json
 import httpx
 from typing import Optional
 from loguru import logger
@@ -20,9 +21,13 @@ from datetime import datetime
 GAMMA_API = "https://gamma-api.polymarket.com"
 CLOB_API = "https://clob.polymarket.com"
 
-# Curated high-volume markets to track (we'll also fetch trending)
-# These are condition_ids — each market has YES/NO token pairs
-DEFAULT_CATEGORIES = ["crypto", "politics", "sports", "science", "pop-culture"]
+# Fetch markets across multiple categories for diversity
+FETCH_CATEGORIES = [
+    # High-volume trending markets (default)
+    {"order": "volume24hr", "ascending": "false", "limit": 40},
+    # Recently active with liquidity
+    {"order": "liquidityNum", "ascending": "false", "limit": 20},
+]
 
 
 class PolymarketFeed:
@@ -44,7 +49,7 @@ class PolymarketFeed:
         """
         self.refresh_interval = refresh_interval
         self._client: Optional[httpx.AsyncClient] = None
-        self._markets: dict[str, dict] = {}  # condition_id -> market dict
+        self._markets: dict[str, dict] = {}  # conditionId -> market dict
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -81,87 +86,115 @@ class PolymarketFeed:
     # ─── Data Fetching ──────────────────────────────────────────
 
     async def _refresh_markets(self):
-        """Fetch active markets from the Gamma API."""
-        try:
-            # Fetch trending/active markets with decent volume
-            response = await self._client.get(
-                f"{GAMMA_API}/markets",
-                params={
+        """Fetch active markets from the Gamma API using multiple queries."""
+        seen_ids = set()
+        total_new = 0
+
+        for query_params in FETCH_CATEGORIES:
+            try:
+                params = {
                     "active": "true",
                     "closed": "false",
-                    "limit": 30,
-                    "order": "volume24hr",
-                    "ascending": "false",
-                },
-            )
-            response.raise_for_status()
-            raw_markets = response.json()
-
-            for raw in raw_markets:
-                cond_id = raw.get("conditionId") or raw.get("id", "")
-                if not cond_id:
-                    continue
-
-                # Parse prices from outcomePrices (JSON string like "[\"0.85\",\"0.15\"]")
-                yes_price = 0.50
-                no_price = 0.50
-                try:
-                    import json
-                    prices = json.loads(raw.get("outcomePrices", "[]"))
-                    if len(prices) >= 2:
-                        yes_price = float(prices[0])
-                        no_price = float(prices[1])
-                except (json.JSONDecodeError, ValueError, IndexError):
-                    pass
-
-                # Parse token IDs for orderbook queries
-                clob_token_ids = []
-                try:
-                    import json
-                    clob_token_ids = json.loads(raw.get("clobTokenIds", "[]"))
-                except (json.JSONDecodeError, ValueError):
-                    pass
-
-                volume_raw = float(raw.get("volume", 0) or 0)
-                volume_24h_raw = float(raw.get("volume24hr", 0) or 0)
-
-                # Build our market dict
-                market = {
-                    "id": f"pm-{cond_id[:12]}",
-                    "conditionId": cond_id,
-                    "clobTokenIds": clob_token_ids,
-                    "name": raw.get("question", "Unknown Market"),
-                    "symbol": raw.get("ticker", ""),
-                    "platform": "polymarket",
-                    "marketType": "prediction",
-                    "description": raw.get("description", "")[:200],
-                    "price": round(yes_price, 4),
-                    "yesPrice": round(yes_price, 4),
-                    "noPrice": round(no_price, 4),
-                    "change": 0.0,  # Will be calculated from price history
-                    "volume": self._format_volume(volume_raw),
-                    "volume24h": self._format_volume(volume_24h_raw),
-                    "category": raw.get("groupSlug", "general"),
-                    "endDate": raw.get("endDateIso", ""),
-                    "active": True,
-                    "image": raw.get("image", ""),
-                    "lastUpdated": datetime.utcnow().isoformat(),
+                    **query_params,
                 }
+                response = await self._client.get(
+                    f"{GAMMA_API}/markets",
+                    params=params,
+                )
+                response.raise_for_status()
+                raw_markets = response.json()
 
-                # Track price change
-                old = self._markets.get(cond_id)
-                if old and old.get("price", 0) > 0:
-                    old_price = old["price"]
-                    market["change"] = round((yes_price - old_price) / old_price, 4) if old_price else 0
+                for raw in raw_markets:
+                    cond_id = raw.get("conditionId") or raw.get("id", "")
+                    if not cond_id or cond_id in seen_ids:
+                        continue
+                    seen_ids.add(cond_id)
 
-                self._markets[cond_id] = market
+                    market = self._parse_market(raw, cond_id)
+                    if market:
+                        self._markets[cond_id] = market
+                        total_new += 1
 
-            logger.debug(f"Polymarket: refreshed {len(raw_markets)} markets")
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"Polymarket API HTTP error: {e.response.status_code}")
+            except httpx.RequestError as e:
+                logger.warning(f"Polymarket API request error: {e}")
 
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"Polymarket API HTTP error: {e.response.status_code}")
-        except httpx.RequestError as e:
-            logger.warning(f"Polymarket API request error: {e}")
+        logger.debug(f"Polymarket: refreshed {total_new} markets (total: {len(self._markets)})")
+
+    def _parse_market(self, raw: dict, cond_id: str) -> Optional[dict]:
+        """Parse a raw Gamma API market into our standard format."""
+        # Parse prices from outcomePrices (JSON string)
+        yes_price = 0.50
+        no_price = 0.50
+        try:
+            prices = json.loads(raw.get("outcomePrices", "[]"))
+            if len(prices) >= 2:
+                yes_price = float(prices[0])
+                no_price = float(prices[1])
+        except (json.JSONDecodeError, ValueError, IndexError):
+            pass
+
+        # Parse CLOB token IDs for orderbook queries
+        clob_token_ids = []
+        try:
+            clob_token_ids = json.loads(raw.get("clobTokenIds", "[]"))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        volume_raw = float(raw.get("volume", 0) or 0)
+        volume_24h_raw = float(raw.get("volume24hr", 0) or 0)
+        liquidity = float(raw.get("liquidityNum", 0) or 0)
+
+        # Determine category from tags/slug
+        category = raw.get("groupSlug", "")
+        if not category:
+            q = (raw.get("question", "") or "").lower()
+            if any(w in q for w in ["bitcoin", "btc", "eth", "crypto", "solana", "price"]):
+                category = "crypto"
+            elif any(w in q for w in ["trump", "election", "president", "senate", "congress"]):
+                category = "politics"
+            elif any(w in q for w in ["nba", "nfl", "ncaa", "premier league", "champion"]):
+                category = "sports"
+            elif any(w in q for w in ["iran", "ukraine", "war", "china", "russia"]):
+                category = "geopolitics"
+            else:
+                category = "general"
+
+        # Build our market dict
+        market = {
+            "id": f"pm-{cond_id[:12]}",
+            "conditionId": cond_id,
+            "clobTokenIds": clob_token_ids,
+            "name": raw.get("question", "Unknown Market"),
+            "symbol": raw.get("ticker", ""),
+            "platform": "polymarket",
+            "marketType": "prediction",
+            "description": (raw.get("description", "") or "")[:200],
+            "price": round(yes_price, 4),
+            "yesPrice": round(yes_price, 4),
+            "noPrice": round(no_price, 4),
+            "change": 0.0,
+            "volume": self._format_volume(volume_raw),
+            "volume24h": self._format_volume(volume_24h_raw),
+            "volumeNum": volume_raw,
+            "liquidityNum": liquidity,
+            "category": category,
+            "endDate": raw.get("endDateIso", ""),
+            "active": True,
+            "image": raw.get("image", ""),
+            "lastUpdated": datetime.utcnow().isoformat(),
+        }
+
+        # Track price change
+        old = self._markets.get(cond_id)
+        if old and old.get("price", 0) > 0:
+            old_price = old["price"]
+            market["change"] = round(
+                (yes_price - old_price) / old_price, 4
+            ) if old_price else 0
+
+        return market
 
     async def fetch_orderbook(self, market_id: str) -> dict:
         """
@@ -205,16 +238,18 @@ class PolymarketFeed:
 
     # ─── Public Getters ─────────────────────────────────────────
 
-    def get_markets(self, search: str = "", limit: int = 30) -> list[dict]:
+    def get_markets(self, search: str = "", limit: int = 50, category: str = "") -> list[dict]:
         """Get cached markets, optionally filtered."""
         results = []
         for m in self._markets.values():
             if search and search.lower() not in m["name"].lower():
                 continue
+            if category and m.get("category", "") != category:
+                continue
             results.append(m)
 
         # Sort by volume (most active first)
-        results.sort(key=lambda m: float(m.get("volume", "$0").replace("$", "").replace("B", "e9").replace("M", "e6").replace("K", "e3") or 0), reverse=True)
+        results.sort(key=lambda m: m.get("volumeNum", 0), reverse=True)
         return results[:limit]
 
     def get_market(self, market_id: str) -> Optional[dict]:
@@ -232,6 +267,14 @@ class PolymarketFeed:
             return round(max(0.01, base - spread), 4)
         else:
             return round(min(0.99, base + spread), 4)
+
+    def get_categories(self) -> list[dict]:
+        """Get available categories with market counts."""
+        cats = {}
+        for m in self._markets.values():
+            cat = m.get("category", "general")
+            cats[cat] = cats.get(cat, 0) + 1
+        return [{"id": k, "count": v} for k, v in sorted(cats.items(), key=lambda x: -x[1])]
 
     def is_running(self) -> bool:
         return self._running and len(self._markets) > 0
