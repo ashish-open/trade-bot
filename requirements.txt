@@ -9,6 +9,8 @@ pydantic-settings>=2.0.0       # Settings management with .env support
 # Data & Analysis
 pandas>=2.0.0                  # Data manipulation
 numpy>=1.24.0                  # Numerical computing
+yfinance>=0.2.0                # Real market data (OpenBB data engine)
+ta>=0.11.0                     # Technical analysis indicators
 
 # HTTP & WebSocket
 httpx>=0.25.0                  # Async HTTP client

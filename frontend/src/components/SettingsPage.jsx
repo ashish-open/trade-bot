@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Shield, Wallet, Bell, Sliders, Target, Coins, Zap, Check, Lock } from 'lucide-react'
+import { Shield, Wallet, Bell, Sliders, Target, Coins, Zap, Check, Lock, TrendingUp, DollarSign, Landmark, BarChart3 } from 'lucide-react'
 
 export default function SettingsPage() {
   const [tradingMode, setTradingMode] = useState('paper')
@@ -14,7 +14,7 @@ export default function SettingsPage() {
     <div className="p-6 space-y-6 max-w-3xl">
       <div>
         <h2 className="text-xl font-semibold text-gray-200">Settings</h2>
-        <p className="text-sm text-gray-500 mt-1">Configure your trading bot and platform connections</p>
+        <p className="text-sm text-gray-500 mt-1">Configure your trading terminal and data connections</p>
       </div>
 
       {/* Trading Mode */}
@@ -74,34 +74,19 @@ export default function SettingsPage() {
         <p className="text-xs text-gray-600 mt-2">Changing this resets all positions and trade history.</p>
       </div>
 
-      {/* Platform Connections */}
+      {/* Data Sources */}
       <div className="glass p-5">
         <div className="flex items-center gap-2 mb-4">
           <Sliders size={16} className="text-accent-purple" />
-          <h3 className="text-sm font-medium text-gray-300">Platform Connections</h3>
+          <h3 className="text-sm font-medium text-gray-300">Data Sources</h3>
         </div>
         <div className="space-y-3">
-          <PlatformRow
-            icon={Target}
-            name="Polymarket"
-            description="Prediction markets on Polygon"
-            status="simulated"
-            color="text-accent-purple"
-          />
-          <PlatformRow
-            icon={Coins}
-            name="Binance"
-            description="Crypto spot trading"
-            status="simulated"
-            color="text-accent-yellow"
-          />
-          <PlatformRow
-            icon={Zap}
-            name="Hyperliquid"
-            description="Perpetual contracts & DEX"
-            status="simulated"
-            color="text-accent-cyan"
-          />
+          <PlatformRow icon={Target} name="Polymarket" description="Prediction markets on Polygon" status="live data" color="text-accent-purple" />
+          <PlatformRow icon={Coins} name="Binance" description="Crypto spot trading" status="live data" color="text-accent-yellow" />
+          <PlatformRow icon={Zap} name="Hyperliquid" description="Perpetual contracts & DEX" status="live data" color="text-accent-cyan" />
+          <PlatformRow icon={TrendingUp} name="Equities" description="20 stocks + 10 ETFs via yfinance" status="live data" color="text-accent-green" />
+          <PlatformRow icon={DollarSign} name="Forex" description="10 major currency pairs" status="live data" color="text-accent-blue" />
+          <PlatformRow icon={Landmark} name="Macro / Economy" description="Indices, bonds, commodities, VIX" status="live data" color="text-gray-300" />
         </div>
       </div>
 
@@ -145,12 +130,9 @@ function PlatformRow({ icon: Icon, name, description, status, color }) {
         <div className="text-xs text-gray-500">{description}</div>
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xs px-2 py-1 rounded-lg bg-accent-yellow/10 text-accent-yellow border border-accent-yellow/20">
+        <span className="text-xs px-2 py-1 rounded-lg bg-accent-green/10 text-accent-green border border-accent-green/20">
           {status}
         </span>
-        <button className="text-xs px-3 py-1.5 rounded-lg bg-white/[0.03] text-gray-400 hover:text-gray-200 hover:bg-white/[0.06] transition-colors border border-white/[0.06]">
-          Connect API
-        </button>
       </div>
     </div>
   )

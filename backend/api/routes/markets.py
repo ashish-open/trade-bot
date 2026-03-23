@@ -1,37 +1,47 @@
-"""Market discovery and data endpoints — hybrid real + simulated."""
+"""Market discovery and data endpoints — real data only."""
 
 from typing import Optional
 from fastapi import APIRouter, Query
-from backend.api.dependencies import get_simulator, get_polymarket_feed
+from backend.api.dependencies import get_polymarket_feed, get_data_provider
 
 router = APIRouter(tags=["markets"])
 
 
-def _poly_feed_active() -> bool:
-    feed = get_polymarket_feed()
-    return feed is not None and feed.is_running()
+PLATFORMS = {
+    "polymarket": {"label": "Polymarket", "type": "prediction", "icon": "target"},
+    "binance":    {"label": "Binance",    "type": "spot",       "icon": "coins"},
+    "hyperliquid":{"label": "Hyperliquid","type": "perp",       "icon": "zap"},
+}
 
 
 @router.get("/platforms")
 async def get_platforms():
     """Get all available trading platforms with market counts and data source."""
-    sim = get_simulator()
     feed = get_polymarket_feed()
-    if not sim:
-        return []
+    provider = get_data_provider()
+    results = []
 
-    platforms = sim.get_platforms()
+    for pid, meta in PLATFORMS.items():
+        entry = {
+            "id": pid,
+            "label": meta["label"],
+            "type": meta["type"],
+            "icon": meta["icon"],
+            "marketCount": 0,
+            "dataSource": "unavailable",
+        }
 
-    # Annotate each platform with its data source
-    for p in platforms:
-        if p["id"] == "polymarket" and feed and feed.is_running():
-            real_count = len(feed.get_markets())
-            p["dataSource"] = "live"
-            p["marketCount"] = real_count
-        else:
-            p["dataSource"] = "simulated"
+        if pid == "polymarket" and feed and feed.is_running():
+            entry["dataSource"] = "live"
+            entry["marketCount"] = len(feed.get_markets())
+        elif pid in ("binance", "hyperliquid") and provider and provider.is_running():
+            real_markets = provider.get_markets(platform=pid)
+            entry["dataSource"] = "live"
+            entry["marketCount"] = len(real_markets)
 
-    return platforms
+        results.append(entry)
+
+    return results
 
 
 @router.get("/markets")
@@ -40,60 +50,45 @@ async def get_markets(
     search: Optional[str] = Query(default=None),
     platform: Optional[str] = Query(default=None),
 ):
-    """
-    Get available markets — real Polymarket data when available, simulated otherwise.
-    """
-    sim = get_simulator()
+    """Get available markets — real data only."""
     feed = get_polymarket_feed()
+    provider = get_data_provider()
     results = []
 
-    # If requesting Polymarket (or all) and live feed is available
-    if feed and feed.is_running() and (not platform or platform == "polymarket"):
-        poly_markets = feed.get_markets(search=search or "", limit=limit)
-        # Add a dataSource flag to each market
-        for m in poly_markets:
-            m["dataSource"] = "live"
-        results.extend(poly_markets)
+    # Polymarket (real feed)
+    if not platform or platform == "polymarket":
+        if feed and feed.is_running():
+            poly_markets = feed.get_markets(search=search or "", limit=limit)
+            for m in poly_markets:
+                m["dataSource"] = "live"
+            results.extend(poly_markets)
 
-    # If requesting Polymarket but feed is down, use simulated
-    if not results and (not platform or platform == "polymarket"):
-        if sim:
-            sim_poly = sim.get_markets(platform="polymarket", search=search or "", limit=limit)
-            for m in sim_poly:
-                m["dataSource"] = "simulated"
-            results.extend(sim_poly)
-
-    # Add other platforms (always simulated for now)
-    if sim and platform != "polymarket":
-        for plat in ["binance", "hyperliquid"]:
-            if platform and platform != plat:
-                continue
-            sim_markets = sim.get_markets(platform=plat, search=search or "", limit=limit)
-            for m in sim_markets:
-                m["dataSource"] = "simulated"
-            results.extend(sim_markets)
+    # Binance + Hyperliquid (real crypto data)
+    for plat in ["binance", "hyperliquid"]:
+        if platform and platform != plat:
+            continue
+        if provider and provider.is_running():
+            real_markets = provider.get_markets(platform=plat, search=search or "", limit=limit)
+            results.extend(real_markets)
 
     return results[:limit]
 
 
 @router.get("/markets/{market_id}")
 async def get_market_detail(market_id: str):
-    """Get detailed info for a single market (real or simulated)."""
+    """Get detailed info for a single market."""
     feed = get_polymarket_feed()
-    sim = get_simulator()
+    provider = get_data_provider()
 
-    # Try live feed first
     if feed and feed.is_running():
         market = feed.get_market(market_id)
         if market:
             market["dataSource"] = "live"
             return market
 
-    # Fall back to simulator
-    if sim:
-        market = sim.get_market(market_id)
+    if provider and provider.is_running():
+        market = provider.get_market(market_id)
         if market:
-            market["dataSource"] = "simulated"
             return market
 
     return {"error": "Market not found"}
@@ -101,11 +96,10 @@ async def get_market_detail(market_id: str):
 
 @router.get("/orderbook/{market_id}")
 async def get_orderbook(market_id: str):
-    """Get order book — real from CLOB API for Polymarket, simulated for others."""
+    """Get order book — real from CLOB API for Polymarket, generated from real prices for crypto."""
     feed = get_polymarket_feed()
-    sim = get_simulator()
+    provider = get_data_provider()
 
-    # Try real orderbook for Polymarket markets
     if feed and feed.is_running():
         market = feed.get_market(market_id)
         if market:
@@ -113,9 +107,10 @@ async def get_orderbook(market_id: str):
             if book["bids"] or book["asks"]:
                 return book
 
-    # Fall back to simulated
-    if sim:
-        return sim.get_orderbook(market_id)
+    if provider and provider.is_running():
+        book = provider.get_orderbook(market_id)
+        if book["bids"] or book["asks"]:
+            return book
 
     return {"bids": [], "asks": []}
 
@@ -124,16 +119,16 @@ async def get_orderbook(market_id: str):
 async def get_price(market_id: str, side: str = "buy"):
     """Get current price for a market."""
     feed = get_polymarket_feed()
-    sim = get_simulator()
+    provider = get_data_provider()
 
-    # Try live feed
     if feed and feed.is_running():
         price = feed.get_price(market_id, side)
         if price > 0:
             return {"price": price, "source": "live"}
 
-    # Fall back
-    if sim:
-        return {"price": sim.get_price(market_id, side), "source": "simulated"}
+    if provider and provider.is_running():
+        price = provider.get_price(market_id, side)
+        if price > 0:
+            return {"price": price, "source": "live"}
 
     return {"price": 0, "source": "none"}

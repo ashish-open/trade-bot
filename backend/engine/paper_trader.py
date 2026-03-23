@@ -3,19 +3,16 @@ Paper Trading Engine — simulates order execution and tracks positions.
 
 Manages:
 - Placing buy/sell orders (limit and market)
-- Matching orders against simulated prices
+- Matching orders against real prices (via a price_fn callback)
 - Position tracking with real-time P&L
 - Trade history and portfolio stats
 - Starting balance and cash management
 """
 
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
-
-from backend.engine.market_simulator import MarketSimulator
+from typing import Optional, Callable
 
 
 @dataclass
@@ -57,19 +54,33 @@ class PaperTrade:
     timestamp: str
 
 
+# Type alias for the price lookup function
+# Signature: price_fn(market_id, side) -> float
+PriceFn = Callable[[str, str], float]
+
+
 class PaperTradingEngine:
     """
-    Paper trading engine that simulates real trading against the market simulator.
+    Paper trading engine that executes paper trades against live market prices.
+
+    Uses a price_fn callback to look up current prices from any data source
+    (OpenBB, Polymarket feed, etc.) — no dependency on any simulator.
 
     Usage:
-        engine = PaperTradingEngine(simulator, starting_balance=10000)
-        order = engine.place_order("sim-btc-150k", "buy", "limit", size=100, price=0.42)
-        engine.check_fills()  # Call periodically to match limit orders
+        engine = PaperTradingEngine(price_fn=provider.get_price, starting_balance=10000)
+        order = engine.place_order("bin-btc-usdt", "buy", "market", size=0.1, price=68000)
+        engine.check_fills()
         portfolio = engine.get_portfolio()
     """
 
-    def __init__(self, simulator: MarketSimulator, starting_balance: float = 10000.0):
-        self.simulator = simulator
+    def __init__(
+        self,
+        price_fn: PriceFn,
+        market_info_fn: Optional[Callable] = None,
+        starting_balance: float = 10000.0,
+    ):
+        self.price_fn = price_fn
+        self.market_info_fn = market_info_fn  # Optional: (market_id) -> dict with name, platform, type
         self.starting_balance = starting_balance
         self.cash = starting_balance
 
@@ -91,30 +102,35 @@ class PaperTradingEngine:
         Place a paper order.
 
         Args:
-            market_id: Which simulated market
+            market_id: Which market to trade
             side: "buy" or "sell"
             order_type: "market" or "limit"
-            size: Number of shares
+            size: Number of shares/units
             price: Required for limit orders
 
         Returns:
             Order dict with id and status
         """
-        market = self.simulator.get_market(market_id)
-        if not market:
-            return {"error": f"Market {market_id} not found"}
+        current_price = self.price_fn(market_id, side)
+        if current_price <= 0:
+            return {"error": f"No price available for {market_id}"}
 
         if size <= 0:
             return {"error": "Size must be positive"}
 
+        # Look up market info for naming
+        market_name = market_id
+        if self.market_info_fn:
+            info = self.market_info_fn(market_id)
+            if info:
+                market_name = info.get("name", market_id)
+
         if side == "buy":
-            # Check if we have enough cash
-            fill_price = price if order_type == "limit" else self.simulator.get_price(market_id, "buy")
+            fill_price = price if order_type == "limit" else current_price
             cost = fill_price * size
             if cost > self.cash:
                 return {"error": f"Insufficient funds. Need ${cost:.2f}, have ${self.cash:.2f}"}
         elif side == "sell":
-            # Check if we have enough shares
             pos = self.positions.get(market_id)
             if not pos or pos.size < size:
                 available = pos.size if pos else 0
@@ -124,7 +140,7 @@ class PaperTradingEngine:
         order = PaperOrder(
             id=order_id,
             market_id=market_id,
-            market_name=market["name"],
+            market_name=market_name,
             side=side,
             order_type=order_type,
             price=price,
@@ -132,11 +148,8 @@ class PaperTradingEngine:
         )
 
         if order_type == "market":
-            # Fill immediately
-            fill_price = self.simulator.get_price(market_id, side)
-            self._fill_order(order, fill_price)
+            self._fill_order(order, current_price)
         else:
-            # Limit order — add to open orders, will check for fills later
             self.orders[order_id] = order
 
         return {
@@ -170,13 +183,13 @@ class PaperTradingEngine:
             if order.status != "open":
                 continue
 
-            current_price = self.simulator.get_price(order.market_id, order.side)
+            current_price = self.price_fn(order.market_id, order.side)
+            if current_price <= 0:
+                continue
 
             if order.side == "buy" and current_price <= order.price:
-                # Buy limit hit — fill at our limit price
                 self._fill_order(order, order.price)
             elif order.side == "sell" and current_price >= order.price:
-                # Sell limit hit — fill at our limit price
                 self._fill_order(order, order.price)
 
     def _fill_order(self, order: PaperOrder, fill_price: float):
@@ -191,20 +204,25 @@ class PaperTradingEngine:
             cost = fill_price * order.size
             self.cash -= cost
 
-            # Update or create position
             pos = self.positions.get(order.market_id)
             if pos:
-                # Average in
                 total_cost = pos.cost_basis + cost
                 total_size = pos.size + order.size
                 pos.entry_price = total_cost / total_size
                 pos.size = total_size
                 pos.cost_basis = total_cost
             else:
-                # Determine platform and position side label
-                sim_market = self.simulator.markets.get(order.market_id)
-                platform = sim_market.platform if sim_market else "paper"
-                side_label = "LONG" if sim_market and sim_market.market_type != "prediction" else "YES"
+                # Determine platform and side label from market info
+                platform = "paper"
+                side_label = "LONG"
+                if self.market_info_fn:
+                    info = self.market_info_fn(order.market_id)
+                    if info:
+                        platform = info.get("platform", "paper")
+                        mtype = info.get("marketType", info.get("type", ""))
+                        if mtype == "prediction":
+                            side_label = "YES"
+
                 self.positions[order.market_id] = PaperPosition(
                     market_id=order.market_id,
                     market_name=order.market_name,
@@ -225,11 +243,9 @@ class PaperTradingEngine:
                 pos.size -= order.size
                 pos.cost_basis = pos.entry_price * pos.size
 
-                # Remove position if fully closed
                 if pos.size <= 0.001:
                     del self.positions[order.market_id]
 
-        # Record the trade
         self.trades.append(PaperTrade(
             id=order.id,
             market_id=order.market_id,
@@ -250,7 +266,10 @@ class PaperTradingEngine:
 
         position_list = []
         for pos in self.positions.values():
-            current_price = self.simulator.get_price(pos.market_id, "sell")
+            current_price = self.price_fn(pos.market_id, "sell")
+            if current_price <= 0:
+                current_price = pos.entry_price
+
             market_value = current_price * pos.size
             unrealized = (current_price - pos.entry_price) * pos.size
             pnl_pct = ((current_price - pos.entry_price) / pos.entry_price * 100) if pos.entry_price > 0 else 0
@@ -274,7 +293,6 @@ class PaperTradingEngine:
         total_value = self.cash + positions_value
         total_pnl = total_value - self.starting_balance
 
-        # Win rate from completed trades
         sell_trades = [t for t in self.trades if t.pnl is not None]
         wins = sum(1 for t in sell_trades if t.pnl >= 0)
         win_rate = (wins / len(sell_trades) * 100) if sell_trades else 0

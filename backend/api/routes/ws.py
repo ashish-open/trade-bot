@@ -4,7 +4,11 @@ import asyncio
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
-from backend.api.dependencies import get_simulator, get_paper_engine, get_polymarket_feed
+from backend.api.dependencies import (
+    get_paper_engine, get_polymarket_feed,
+    get_data_provider, get_strategy_manager,
+    get_equity_provider, get_forex_provider, get_macro_provider,
+)
 
 router = APIRouter()
 ws_connections: set[WebSocket] = set()
@@ -14,9 +18,10 @@ ws_connections: set[WebSocket] = set()
 async def websocket_updates(websocket: WebSocket):
     """
     Push real-time updates every second:
-    - Market prices (real Polymarket + simulated others)
+    - Market prices (Polymarket + crypto + equity + forex)
+    - Global indices and macro overview
     - Portfolio value and positions
-    - Limit order fill checks
+    - Strategy signals and stats
     """
     await websocket.accept()
     ws_connections.add(websocket)
@@ -24,15 +29,19 @@ async def websocket_updates(websocket: WebSocket):
 
     try:
         while True:
-            sim = get_simulator()
             engine = get_paper_engine()
             feed = get_polymarket_feed()
+            provider = get_data_provider()
+            strategy_mgr = get_strategy_manager()
+            equity = get_equity_provider()
+            forex = get_forex_provider()
+            macro = get_macro_provider()
 
             update = {"type": "tick", "timestamp": datetime.utcnow().isoformat()}
 
             market_updates = []
 
-            # Real Polymarket data (if feed is live)
+            # Real Polymarket data
             if feed and feed.is_running():
                 for m in feed.get_markets():
                     market_updates.append({
@@ -43,24 +52,51 @@ async def websocket_updates(websocket: WebSocket):
                         "dataSource": "live",
                     })
 
-            # Simulated markets (Binance + Hyperliquid + fallback Polymarket)
-            if sim:
-                live_poly_ids = {m["id"] for m in market_updates}
-                for m_id, m in sim.markets.items():
-                    # Skip simulated Polymarket if live feed covers it
-                    if m.platform == "polymarket" and live_poly_ids:
-                        continue
-                    decimals = 4 if m.market_type == "prediction" else 2
+            # Real crypto data (Binance + Hyperliquid)
+            if provider and provider.is_running():
+                for m in provider.get_markets():
                     market_updates.append({
-                        "id": m_id,
-                        "price": round(m.true_price, decimals),
-                        "change": m.get_price_change(),
-                        "platform": m.platform,
-                        "dataSource": "simulated",
+                        "id": m["id"],
+                        "price": m["price"],
+                        "change": m.get("change", 0),
+                        "platform": m["platform"],
+                        "dataSource": "live",
+                    })
+
+            # Real equity data
+            if equity and equity.is_running():
+                for m in equity.get_markets():
+                    market_updates.append({
+                        "id": m["id"],
+                        "price": m["price"],
+                        "change": m.get("change", 0),
+                        "platform": "equity",
+                        "dataSource": "live",
+                        "type": m.get("marketType", "stock"),
+                    })
+
+            # Real forex data
+            if forex and forex.is_running():
+                for m in forex.get_markets():
+                    market_updates.append({
+                        "id": m["id"],
+                        "price": m["price"],
+                        "change": m.get("change", 0),
+                        "platform": "forex",
+                        "dataSource": "live",
                     })
 
             update["markets"] = market_updates
 
+            # Macro overview (indices, bonds, commodities, VIX)
+            if macro and macro.is_running():
+                try:
+                    overview = macro.get_overview()
+                    update["macro"] = overview
+                except Exception:
+                    pass
+
+            # Portfolio
             if engine:
                 engine.check_fills()
                 portfolio = engine.get_portfolio()
@@ -76,6 +112,18 @@ async def websocket_updates(websocket: WebSocket):
                     "openPositions": portfolio["openPositions"],
                 }
                 update["positions"] = portfolio["positions"]
+
+            # Strategy info
+            if strategy_mgr:
+                stats = strategy_mgr.get_stats()
+                update["strategies"] = {
+                    "activeStrategies": stats["active_strategies"],
+                    "totalSignals": stats["total_signals"],
+                    "totalExecutions": stats["total_executions"],
+                    "lastEvalAt": stats["last_eval_at"],
+                    "recentSignals": strategy_mgr.get_signals(5),
+                    "recentExecutions": strategy_mgr.get_executions(5),
+                }
 
             await websocket.send_json(update)
             await asyncio.sleep(1)
